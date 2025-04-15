@@ -7,6 +7,7 @@ export default function ConfigureExercises() {
   const navigate = useNavigate();
 
   const [exercises, setExercises] = useState([]);
+  const [exercisesWithDummy, setExercisesWithDummy] = useState([]);
   const [newExerciseName, setNewExerciseName] = useState("");
 
   const [editingId, setEditingId] = useState(null);
@@ -21,16 +22,21 @@ export default function ConfigureExercises() {
     const fetchEverything = async () => {
       await fetchExercises();
       await fetchMachines();
-      await fetchMappings();
+      await fetchMappings();      
     };
     fetchEverything();
   }, []);
 
   const fetchExercises = async () => {
     try {
+      console.log("Fetching exercises...");
       const res = await fetch("http://localhost:5000/exercises");
       const data = await res.json();
       setExercises(data);
+      console.log("Exercises: ", data);
+      const withDummy = [...data, {id: 'new', name: '', machines: []}];
+      setExercisesWithDummy(withDummy);
+      console.log("Exercises with dummy: ", withDummy);
     } catch (err) {
       console.error("Failed to fetch exercises:", err);
     }
@@ -48,16 +54,17 @@ export default function ConfigureExercises() {
   };
 
   const fetchMappings = async () => {
-    const exercisesRes = await fetch('http://localhost:5000/exercises');
-    const exercises = await exercisesRes.json();
-    setExercises(exercises);
+    const exercisesRes = await fetch('http://localhost:5000/exercises');//just making sure that fetchMappings has the up-to-date exercises in case the dedicated exercise function hasn't returned anything yet
+    const localExercises = await exercisesRes.json();
+    //setExercises(exercises);//do NOT write the exercises to setExercises though, otherwise the dedicated logic in fetchExercises is circumvented - use const exercises locally only
 
     const mappingResults = {};
 
-    for (const exercise of exercises) {
+    for (const exercise of localExercises) {
       const mappings = await fetchMappingsForId(exercise.id);
       mappingResults[exercise.id] = mappings;
     }
+    mappingResults['new'] = [];//add dummy line
     setMachineMapping(mappingResults);
 
     console.log("Mapping Results: ", mappingResults);
@@ -75,15 +82,37 @@ export default function ConfigureExercises() {
   };
 
   const addExercise = async () => {
+    //console.log("New Exercise: ", newExerciseName);
+    //console.log("Exercise list: ", exercises);
+    //console.log("Exercises with dummy: ", exercisesWithDummy);
+    //console.log("editedName: ", editedName);
+    //console.log("machineMapping: ", machineMapping);
+
     if (!newExerciseName.trim()) return;
     try {
-      await fetch("http://localhost:5000/exercises", {
+      const res = await fetch("http://localhost:5000/exercises", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newExerciseName }),
+        body: JSON.stringify({name: newExerciseName}),
+      });
+
+      const newExercise = await res.json(); // assuming it returns { id: ..., name: ... }
+
+      const machineIds = (machineMapping['new'] || []).map(m => Number(m.machine_id));
+
+      console.log("New Exercise: ", newExercise);
+      
+      console.log("Machine IDs: ", machineIds);
+
+      await fetch(`http://localhost:5000/exercise-machine-mapping/${newExercise.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ machineIds: machineIds }),
       });
       setNewExerciseName("");
+      setEditedName("");
       fetchExercises();
+      fetchMappings();
     } catch (err) {
       console.error("Failed to add exercise:", err);
     }
@@ -117,6 +146,7 @@ export default function ConfigureExercises() {
         body: JSON.stringify({ machineIds: machineIds }),
       });
       setEditingId(null);
+      setEditedName("");
       fetchExercises(); // refresh list
     } catch (err) {
       console.error("Update failed:", err);
@@ -139,21 +169,29 @@ export default function ConfigureExercises() {
           </tr>
         </thead>
         <tbody>
-          {exercises.map((exercise) => (
+          {exercisesWithDummy.map((exercise) => (
             <tr key={exercise.id}>
               <td>{exercise.id}</td>
               <td>
-                {editingId === exercise.id ? (
+                {editingId === exercise.id || exercise.id === 'new' ? (
+                  exercise.id === 'new'?
+                  (
+                    <input
+                    value={newExerciseName}
+                    onChange={(e) => setNewExerciseName(e.target.value)}
+                  />
+                  ) : (
                   <input
                     value={editedName}
                     onChange={(e) => setEditedName(e.target.value)}
                   />
+                  )
                 ) : (
                   exercise.name
                 )}
               </td>
               <td>
-                {editingId === exercise.id ? (
+                {editingId === exercise.id || exercise.id === 'new' ? (
                   <>
                     <MultiDropdownHandler
                       selectedItems={(machineMapping[exercise.id] || []).map(m => m.machine_id)}
@@ -177,39 +215,33 @@ export default function ConfigureExercises() {
                 )}
               </td>
               <td>
-                {editingId === exercise.id ? (
-                  <>
-                    <button onClick={() => saveEdit(exercise.id)}>Save</button>
-                    <button onClick={() => setEditingId(null)}>Cancel</button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setEditingId(exercise.id);
-                      setEditedName(exercise.name);
-                    }}
-                  >
-                    Edit
-                  </button>
-                )}
-                <button onClick={() => deleteExercise(exercise.id)}>Delete</button>
+                {
+                  editingId === exercise.id || exercise.id === 'new' ? (
+                    exercise.id === 'new' ? (
+                      <button onClick={addExercise}>Add Exercise</button>
+                    ) : (
+                      <>
+                        <button onClick={() => saveEdit(exercise.id)}>Save</button>
+                        <button onClick={() => setEditingId(null)}>Cancel</button>
+                      </>
+                    )
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => {
+                          setEditingId(exercise.id);
+                          setEditedName(exercise.name);
+                        }}
+                      >
+                        Edit
+                      </button>
+                      <button onClick={() => deleteExercise(exercise.id)}>Delete</button>
+                    </>
+                  )
+                }
               </td>
             </tr>
           ))}
-          <tr>
-            <td></td>
-            <td>
-              <input
-                type="text"
-                value={newExerciseName}
-                onChange={(e) => setNewExerciseName(e.target.value)}
-                placeholder="Exercise name"
-              />
-            </td>
-            <td>
-              <button onClick={addExercise}>Add Exercise</button>
-            </td>
-          </tr>
         </tbody>
       </table>
     </div>
