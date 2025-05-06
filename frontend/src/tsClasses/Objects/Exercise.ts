@@ -1,13 +1,13 @@
-import { Parameter } from './GeneralTableClasses/Parameter';
+import { Parameter } from '../GeneralTableClasses/Parameter';
 
 export class Exercise {
   parameters: Map<string, Parameter>;
 
   constructor(parameters: Parameter[]) {
     this.parameters = new Map();
-    for (const p of parameters) {
+    /*for (const p of parameters) {
       this.parameters.set(p.technicalName, p);
-    }
+    }*/
   }
 
   getParameter(label: string): Parameter | undefined {
